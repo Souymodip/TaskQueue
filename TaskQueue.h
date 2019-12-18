@@ -1,3 +1,9 @@
+#include <vector>
+#include <deque>
+#include <atomic>
+#include <memory>
+#include <condition_variable>
+
 template<class PL>
 struct Subscriber {
     virtual ~Subscriber() = default;
