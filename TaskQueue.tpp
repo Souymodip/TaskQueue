@@ -14,27 +14,19 @@ template<class PL>
 void TaskQueue<PL>::postTask(Publisher<PL>& pub) {
     auto thId = std::this_thread::get_id();
     CODE(std::cerr << thId << " - Entered Publisher   -\n";)
-    auto pls = pub();
-    if (not pls.empty()) {
+
+    while(not m_complete) {
+        unique_lock<mutex> lock (m_mutex);
+        condition.wait(lock, [this]() { return m_postTask ? true : false; });
+        m_postTask = false;
+        auto pls = pub();
+        m_complete = pls.empty() and m_q.empty();
+        
         CODE(std::cerr << "  " << thId << ": Posting Task # " << pls.size() << std::endl;)
         for (const auto& pl : pls) m_q.push_back(pl);
-    } else
-        m_complete = true;
-
-    empty_q.notify_all();
-    while(not m_interrupt and not m_complete) {
-        unique_lock<mutex> lock (m_mutex);
-        task_complete.wait(lock);
-        auto pls = pub();
-        bool toContinue = not pls.empty();
-        if (toContinue) {
-            CODE(std::cerr << "  " << thId << ": Posting Task # " << pls.size() << std::endl;)
-            for (const auto& pl : pls) m_q.push_back(pl);
-        }
+        
         lock.unlock();
-
-        empty_q.notify_all();
-        m_complete = not toContinue and m_q.empty();
+        condition.notify_all();
     }
 }
 
@@ -42,18 +34,19 @@ template<class PL>
 void TaskQueue<PL>::fetchTask(Subscriber<PL>& sub) {
     auto thId = std::this_thread::get_id();
     CODE(std::cerr << thId << " - Entered Subscriber - \n";)
-    while (not m_interrupt and not m_complete) {
+    while (not m_complete) {
         unique_lock<mutex> lock(m_mutex);
-        empty_q.wait(lock, [this]() {return not m_q.empty() or m_complete;});
-        if (not m_q.empty() and not m_interrupt and not m_complete) {
-            auto pl = m_q.front();
+        condition.wait(lock, [this]() {return not m_q.empty() or m_complete;});
+        if (not m_q.empty() and not m_complete) {
+            auto pl = m_q.front(); // Copy
             m_q.pop_front();
-            lock.unlock();
+            lock.unlock(); // Unlock for other subscribers
 
             CODE(std::cerr << "  " << thId << ": Fetching Task\n";)
             sub(pl);
         } else
             lock.unlock();
+        m_postTask = true;
         task_complete.notify_all();
         CODE(std::cerr << "  " << thId <<": One Task Complete\n";)
     }
