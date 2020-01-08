@@ -25,18 +25,17 @@ using  Publishers = std::vector< std::unique_ptr<Publisher<PL>>>;
 template<class PL>
 class TaskQueue {
   public:
-    TaskQueue(std::atomic_bool& interrupt) : m_interrupt(interrupt), m_complete(false) {}
+    TaskQueue(std::atomic_bool& interrupt) : m_complete(false) {}
     ~TaskQueue() = default;
     void run(const Subscribers<PL>& subscribers, const Publishers<PL>& publishers);
   private:
     void postTask(Publisher<PL>& pub);
     void fetchTask(Subscriber<PL>& sub);
 
-    const std::atomic_bool& m_interrupt;
-    std::atomic_bool m_complete;
+    bool m_complete;
+    std::atomic_bool m_postTask;
 
     std::deque<PL> m_q;
     std::mutex m_mutex;
-    std::condition_variable empty_q;
-    std::condition_variable task_complete;
+    std::condition_variable condition;
 };
